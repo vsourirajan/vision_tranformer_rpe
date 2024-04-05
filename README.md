@@ -1,1 +1,1 @@
-# Examining Various RPE Mechanisms for Vision Transformers (ViTs)
+# Examining Various Relative Positional Encoding (RPE) Mechanisms for Vision Transformers (ViTs)
