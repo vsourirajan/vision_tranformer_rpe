@@ -5,4 +5,11 @@
 - Monotonically Decreasing Function: $f = e^{-\alpha x}$
 - Ratio of two polynomial functions: $f = \frac{h}{g}$
 
-Each mechanism is tested on MNIST and CIFAR10
+### Subvariants
+We explore two subvariants for each of the mechanisms above:
+- Each attention head of a layer uses the same parameters of the corresponding RPE mechanism
+- Separate heads use separate parameters of the corresponding RPE mechamism
+
+We also provide a comparison to the RPE-free baseline, which can be seen in `absolute_pos_encoding_vit.py`
+
+Each mechanism is tested on 
