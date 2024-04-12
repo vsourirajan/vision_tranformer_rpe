@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import math
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -35,13 +36,29 @@ class PatchEmbedding(nn.Module):
 
         return x
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, num_patches, embed_dim, max_len=512):
+        super(PositionalEncoding, self).__init__()
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
+
+        self.pos_embedding = torch.zeros(max_len, 1, embed_dim)
+        self.pos_embedding[:, 0, 0::2] = torch.sin(position * div_term)
+        self.pos_embedding[:, 0, 1::2] = torch.cos(position * div_term)
+
+    def forward(self, x):
+        x = x + self.pos_embedding[:x.size(0)]
+        return x
+
 class VisionTransformer(nn.Module):
     def __init__(self, image_size, patch_size, num_classes, embedding_size, num_layers, num_heads, dropout):
         super(VisionTransformer, self).__init__()
         self.num_patches = (image_size // patch_size) ** 2
         self.embedding_size = embedding_size
         
-        self.positional_embedding = nn.Parameter(torch.randn(1, self.num_patches + 1, embedding_size))
+        self.positional_embedding = PositionalEncoding(self.num_patches, embedding_size)
+
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads),
             num_layers=num_layers
@@ -53,11 +70,11 @@ class VisionTransformer(nn.Module):
     def forward(self, x):
         batch_size, channels, height, width = x.shape
 
-        x = PatchEmbedding(self.patch_size, self.patch_size, channels, self.hidden_size)(x)
-        x = x + self.positional_embedding[:, :self.num_patches]
+        x = PatchEmbedding(self.patch_size, self.patch_size, channels, self.embedding_size)(x)
+        x = x + self.positional_embedding(x)
         x = self.transformer_encoder(x.permute(1, 0, 2))
         
-        #x = x.mean(0)
+        x = x.mean(0)
         x = self.dropout(x)
         x = self.classification_head(x)
         return x
@@ -67,7 +84,7 @@ model = VisionTransformer(image_size=32, patch_size=8, num_classes=10, embedding
 loss_function = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=3e-4)
 
-num_epochs = 2
+num_epochs = 100
 
 #training loop
 for epoch in range(num_epochs):
