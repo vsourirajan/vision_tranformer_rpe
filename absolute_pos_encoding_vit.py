@@ -20,6 +20,7 @@ test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
 
 train_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
 test_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
+device = "mps" if torch.has_mps else "cpu"
 
 
 class PatchEmbedding(nn.Module):
@@ -81,54 +82,57 @@ class VisionTransformer(nn.Module):
         x = self.classification_head(x)
         return x
 
-#set device as mps
-device = "mps" if torch.has_mps else "cpu"
 
-model = VisionTransformer(image_size=32, patch_size=4, num_classes=10, embedding_size=128, num_layers=3, num_heads=8, dropout=0.1).to(device)
+def main():
 
-loss_function = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=3e-4)
+    model = VisionTransformer(image_size=32, patch_size=4, num_classes=10, embedding_size=128, num_layers=3, num_heads=8, dropout=0.1).to(device)
 
-num_epochs = 100
+    loss_function = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=3e-4)
 
-#training loop
-for epoch in range(num_epochs):
-    model.train()
-    running_loss = 0.0
+    num_epochs = 100
+
+    #training loop
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        for images, labels in tqdm(train_loader_mnist):
+
+            images, labels = images.to(device), labels.to(device)
+
+            optimizer.zero_grad()
+            
+            outputs = model(images)
+            loss = loss_function(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+        
+        train_loss = running_loss / len(train_loader_mnist)
+        train_acc = correct / total
+        
+        print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+
+    model.eval()
     correct = 0
     total = 0
-    for images, labels in tqdm(train_loader_mnist):
 
-        images, labels = images.to(device), labels.to(device)
+    #testing loop
+    with torch.no_grad():
+        for images, labels in tqdm(test_loader_mnist):
+            outputs = model(images)
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
 
-        optimizer.zero_grad()
-        
-        outputs = model(images)
-        loss = loss_function(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += labels.size(0)
-        correct += predicted.eq(labels).sum().item()
-    
-    train_loss = running_loss / len(train_loader_mnist)
-    train_acc = correct / total
-    
-    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+    test_acc = correct / total
+    print(f"Test Accuracy: {test_acc:.4f}")
 
-model.eval()
-correct = 0
-total = 0
-
-#testing loop
-with torch.no_grad():
-    for images, labels in tqdm(test_loader_mnist):
-        outputs = model(images)
-        _, predicted = outputs.max(1)
-        total += labels.size(0)
-        correct += predicted.eq(labels).sum().item()
-
-test_acc = correct / total
-print(f"Test Accuracy: {test_acc:.4f}")
+if __name__ == "__main__":
+    main()
