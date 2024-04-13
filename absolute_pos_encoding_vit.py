@@ -27,7 +27,8 @@ class PatchEmbedding(nn.Module):
         super(PatchEmbedding, self).__init__()
         self.image_size = image_size
         self.patch_size = patch_size
-        self.projection = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        #self.projection = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.projection = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size, device=device)
 
     def forward(self, x):
         x = self.projection(x)  #(batch_size, embed_dim, num_patches_w, num_patches_h)
@@ -43,7 +44,8 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
 
-        self.pos_embedding = torch.zeros(max_len, 1, embed_dim)
+        #self.pos_embedding = torch.zeros(max_len, 1, embed_dim)
+        self.pos_embedding = torch.zeros(max_len, 1, embed_dim, device=device)
         self.pos_embedding[:, 0, 0::2] = torch.sin(position * div_term)
         self.pos_embedding[:, 0, 1::2] = torch.cos(position * div_term)
 
@@ -60,7 +62,7 @@ class VisionTransformer(nn.Module):
         self.positional_embedding = PositionalEncoding(self.num_patches, embedding_size)
 
         self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads),
+            nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads, norm_first=True),
             num_layers=num_layers
         )
         self.classification_head = nn.Linear(embedding_size, num_classes)
@@ -78,8 +80,11 @@ class VisionTransformer(nn.Module):
         x = self.dropout(x)
         x = self.classification_head(x)
         return x
-    
-model = VisionTransformer(image_size=32, patch_size=8, num_classes=10, embedding_size=128, num_layers=3, num_heads=8, dropout=0.1)
+
+#set device as mps
+device = "mps" if torch.has_mps else "cpu"
+
+model = VisionTransformer(image_size=32, patch_size=4, num_classes=10, embedding_size=128, num_layers=3, num_heads=8, dropout=0.1).to(device)
 
 loss_function = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=3e-4)
@@ -93,6 +98,8 @@ for epoch in range(num_epochs):
     correct = 0
     total = 0
     for images, labels in tqdm(train_loader_mnist):
+
+        images, labels = images.to(device), labels.to(device)
 
         optimizer.zero_grad()
         
