@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 
 
 transform = transforms.Compose([
-    transforms.ToTensor()
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
 train_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=True, download=True, transform=transform)
@@ -54,7 +55,34 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         x = x + self.pos_embedding[:x.size(0)]
+        x = nn.Dropout(0.1)(x)
         return x
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, embed_dim, num_heads, dim_head=64):
+        super().__init__()
+        inner_dim = dim_head * num_heads
+        self.num_heads = num_heads
+        self.scale = dim_head ** -0.5
+        self.norm = nn.LayerNorm(embed_dim)
+
+        self.to_qkv = nn.Linear(embed_dim, inner_dim * 3, bias=False)
+        self.to_out = nn.Linear(inner_dim, embed_dim)
+
+        self.softmax = nn.Softmax(dim=-1)
+    
+    def forward(self, x):
+        x = self.norm(x)
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+
+        q, k, v = map(lambda t: t.reshape(t.shape[0], t.shape[1], self.num_heads, -1).permute(0, 2, 1, 3), qkv)
+
+        dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
+        attn = self.softmax(dots)
+        out = torch.einsum('bhij,bhjd->bhid', attn, v).reshape(x.shape[0], self.num_heads, x.shape[1], -1)
+        out = self.to_out(out)
+        return out
+
 
 class EncoderBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, mlp_ratio=4, dropout=0.1):
@@ -96,7 +124,7 @@ class VisionTransformer(nn.Module):
         self.positional_embedding = PositionalEncoding(self.num_patches, embedding_size)
 
         self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads, norm_first=True),
+            nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads, dropout=dropout),
             num_layers=num_layers
         )
 
@@ -105,7 +133,7 @@ class VisionTransformer(nn.Module):
         ])'''
 
         self.classification_head = nn.Linear(embedding_size, num_classes)
-        self.softmax = nn.Softmax(dim=-1)
+        #self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -147,12 +175,13 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
 
 def main():
 
-    model = VisionTransformer(image_size=28, patch_size=4, num_classes=10, embedding_size=64, num_layers=4, num_heads=4, dropout=0.1).to(device)
+    model = VisionTransformer(image_size=28, patch_size=4, num_classes=10, embedding_size=128, num_layers=2, num_heads=2, dropout=0.2).to(device)
+    print(model)
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
-    num_epochs = 10
+    num_epochs = 100
 
     #training and validation loop
     train_losses = []
