@@ -8,6 +8,9 @@ from tqdm import tqdm
 import math
 import matplotlib.pyplot as plt
 
+from einops import rearrange
+from einops.layers.torch import Rearrange
+
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -25,6 +28,28 @@ test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
 
 device = "mps" if torch.has_mps else "cpu"
 
+def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
+    epochs = range(1, len(train_losses) + 1)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, train_losses, 'b', label='Training loss')
+    plt.plot(epochs, val_losses, 'r', label='Validation loss')
+    plt.title('Training Loss of Absolute Positional Encoding Vision Tranformer on MNIST Dataset')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
+    plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
+    plt.title('Training Accuracy of Absolute Positional Encoding Vision Tranformer on MNIST Dataset')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 class PatchEmbedding(nn.Module):
     def __init__(self, image_size, patch_size, in_channels, embed_dim):
@@ -59,123 +84,112 @@ class PositionalEncoding(nn.Module):
         return x
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, dim_head=64):
+    def __init__(self, embedding_dim, num_heads, dim_head=64):
         super().__init__()
         inner_dim = dim_head * num_heads
         self.num_heads = num_heads
         self.scale = dim_head ** -0.5
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(embedding_dim)
 
-        self.to_qkv = nn.Linear(embed_dim, inner_dim * 3, bias=False)
-        self.to_out = nn.Linear(inner_dim, embed_dim)
+        self.to_qkv = nn.Linear(embedding_dim, inner_dim * 3, bias=False)
+        self.to_out = nn.Linear(inner_dim, embedding_dim)
 
         self.softmax = nn.Softmax(dim=-1)
     
     def forward(self, x):
         x = self.norm(x)
+
         qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.num_heads), qkv)
 
-        q, k, v = map(lambda t: t.reshape(t.shape[0], t.shape[1], self.num_heads, -1).permute(0, 2, 1, 3), qkv)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
-        dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
         attn = self.softmax(dots)
-        out = torch.einsum('bhij,bhjd->bhid', attn, v).reshape(x.shape[0], self.num_heads, x.shape[1], -1)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
         out = self.to_out(out)
         return out
 
-
-class EncoderBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads, mlp_ratio=4, dropout=0.1):
-        super(EncoderBlock, self).__init__()
-        self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
-        self.norm1 = nn.LayerNorm(embed_dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(embed_dim, mlp_ratio*embed_dim),
-            nn.GELU(),
-            nn.Linear(mlp_ratio*embed_dim, embed_dim)
-        )
-        self.norm2 = nn.LayerNorm(embed_dim)
-        self.dropout = nn.Dropout(dropout)
+class MLP(nn.Module):
+    def __init__(self, embedding_dim, mlp_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(embedding_dim, mlp_dim)
+        self.fc2 = nn.Linear(mlp_dim, embedding_dim)
+        self.gelu = nn.GELU()
+        self.norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, x):
-        # Multihead Attention
-        residual = x
-        x = self.attention(x, x, x)[0]
-        x = self.dropout(x)
-        x = x + residual
-        x = self.norm1(x)
-
-        # MLP
-        residual = x
-        x = self.mlp(x)
-        x = self.dropout(x)
-        x = x + residual
-        x = self.norm2(x)
-
+        x = self.norm(x)
+        x = self.fc1(x)
+        x = self.gelu(x)
+        x = self.fc2(x)
         return x
 
+class EncoderBlock(nn.Module):
+    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim):
+        super(EncoderBlock, self).__init__()
+        self.attention = MultiHeadAttention(embedding_dim, num_heads)
+        self.mlp = MLP(embedding_dim, mlp_dim)
+
+        self.norm = nn.LayerNorm(embedding_dim)
+        self.encoder_block = nn.ModuleList([])
+        for _ in range(num_layers):
+            self.encoder_block.append(nn.ModuleList([
+                self.attention,
+                self.mlp
+            ]))
+
+    def forward(self, x):
+        for attn, mlp in self.encoder_block:
+            x = attn(x) + x
+            x = mlp(x) + x
+        x = self.norm(x)
+        return x 
+
 class VisionTransformer(nn.Module):
-    def __init__(self, image_size, patch_size, num_classes, embedding_size, num_layers, num_heads, dropout):
-        super(VisionTransformer, self).__init__()
+    def __init__(self, image_size, patch_size, num_classes, embedding_dim, num_layers, num_heads, mlp_dim, channels, dropout):
+        super().__init__()
         self.num_patches = (image_size // patch_size) ** 2
-        self.embedding_size = embedding_size
+        self.embedding_size = embedding_dim
         self.patch_size = patch_size
-        #self.positional_embedding = torch.randn(self.num_patches, embedding_size, device=device)
-        self.positional_embedding = PositionalEncoding(self.num_patches, embedding_size)
+        self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
 
-        self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=embedding_size, nhead=num_heads, dropout=dropout),
-            num_layers=num_layers
-        )
+        #self.positional_embedding = torch.randn(self.num_patches, embedding_dim, device=device)
+        self.positional_embedding = PositionalEncoding(self.num_patches, embedding_dim)
 
-        '''self.transformer_encoder = nn.Sequential(*[
-            EncoderBlock(embedding_size, num_heads, dropout=dropout) for _ in range(num_layers)
-        ])'''
+        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim)
+        self.to_latent = nn.Identity()
+        self.classification_head = nn.Linear(embedding_dim, num_classes)        
 
-        self.classification_head = nn.Linear(embedding_size, num_classes)
-        #self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        batch_size, channels, _, _ = x.shape
 
-        x = PatchEmbedding(self.patch_size, self.patch_size, channels, self.embedding_size)(x)
+        x = self.patch_embedding(x)
+        # print("After patch embedding: ", x.shape)
         x = x + self.positional_embedding(x)
-        x = self.transformer_encoder(x.permute(1, 0, 2))
+        # print("After positional embedding: ", x.shape)
+        x = self.encoder_block(x)
         
-        x = x.mean(0)
-        x = self.dropout(x)
+        x = x.mean(dim = 1)
+        x = self.to_latent(x)
         x = self.classification_head(x)
         return x
 
 
-def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
-    epochs = range(1, len(train_losses) + 1)
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(epochs, train_losses, 'b', label='Training loss')
-    plt.plot(epochs, val_losses, 'r', label='Validation loss')
-    plt.title('Training Loss of Absolute Positional Encoding Vision Tranformer on MNIST Dataset')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
-    plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
-    plt.title('Training Accuracy of Absolute Positional Encoding Vision Tranformer on MNIST Dataset')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
 
 def main():
 
-    model = VisionTransformer(image_size=28, patch_size=4, num_classes=10, embedding_size=128, num_layers=2, num_heads=2, dropout=0.2).to(device)
+    model = VisionTransformer(image_size=28, 
+                              patch_size=4, 
+                              num_classes=10, 
+                              embedding_dim=128, 
+                              num_layers=4, 
+                              num_heads=4, 
+                              mlp_dim=512,
+                              channels=1,
+                              dropout=0.2).to(device)
     print(model)
 
     loss_function = nn.CrossEntropyLoss()
@@ -197,7 +211,7 @@ def main():
         for images, labels in tqdm(train_loader_mnist):
 
             images, labels = images.to(device), labels.to(device)
-
+            # print("Image shape: ", images.shape)
             optimizer.zero_grad()
             
             outputs = model(images)

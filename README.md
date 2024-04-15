@@ -12,4 +12,9 @@ We explore two subvariants for each of the mechanisms above:
 
 We also provide a comparison to the RPE-free baseline, which can be seen in `absolute_pos_encoding_vit.py`
 
-Each mechanism is tested on 
+Each mechanism is tested on MNIST, CIFAR datasets
+
+### Results:
+Absolute Positional Encoding: 0.820 Test accuracy
+General Learnable Function: 
+Monotonically Decreasing Function: 
