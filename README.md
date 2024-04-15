@@ -14,6 +14,10 @@ We also provide a comparison to the RPE-free baseline, which can be seen in `abs
 
 Each mechanism is tested on MNIST, CIFAR datasets
 
+### How to Run:
+- You can run the absolute positional encoding model with the following command: `python3 absolute_pos_encoding_vit.py`
+    - If "mps" is available the model with train on the MacOS GPU. Otherwise it will train on the cpu
+
 ### Results:
 Absolute Positional Encoding: 0.820 Test accuracy
 General Learnable Function: 
