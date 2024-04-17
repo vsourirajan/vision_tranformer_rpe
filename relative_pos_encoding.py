@@ -245,7 +245,7 @@ def main():
                               num_classes=10, 
                               embedding_dim=128, 
                               num_layers=4, 
-                              num_heads=4, 
+                              num_heads=4,  
                               mlp_dim=512,
                               channels=1,
                               dropout=0.2).to(device)
@@ -254,7 +254,7 @@ def main():
 
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=0.0001)
 
     num_epochs = 100
 

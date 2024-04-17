@@ -19,6 +19,7 @@ Each mechanism is tested on MNIST, CIFAR datasets
     - If "mps" is available the model with train on the MacOS GPU. Otherwise it will train on the cpu
 
 ### Results:
-Absolute Positional Encoding: 0.820 Test accuracy
-General Learnable Function: 
-Monotonically Decreasing Function: 
+- Absolute Positional Encoding: 0.820 Test accuracy
+- General Learnable Function: 0.192 Test accuracy
+- Monotonically Decreasing Function: 
+- Ratio of Two Polynomial Functions: 
