@@ -88,88 +88,65 @@ class PatchEmbedding(nn.Module):
 
 #general learnable function where weights are shared across all attention heads
 class GeneralLearnableFunctionParallel(nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, n, d):
         super(GeneralLearnableFunctionParallel, self).__init__()
-        self.fc = nn.Linear(1, embedding_dim)
-    
-    def forward(self, x):
-        embeddings = self.fc(x)
+        self.n = n
+        self.d = d
+        self.embeddings = nn.Linear(1, d)
 
-
-#general learnable function where weights are different for each attention head
-class GeneralLearnableFunctionIndividual(nn.Module):
-    def __init__(self, embedding_dim, distance_matrix):
-        super(GeneralLearnableFunctionIndividual, self).__init__()
-        self.distance_matrix = distance_matrix
-        self.fc = nn.Linear(1, embedding_dim)
-
-
-    def forward(self, distances, num_heads):
-        batch_size, num_patches, _ = distances.size()
-        distances = distances.unsqueeze(-1) 
-        positional_encodings = self.fc(torch.Tensor(distances))
-        return positional_encodings
+    def forward(self, distance_matrix):
+        distance_matrix = distance_matrix.unsqueeze(-1)
+        embeddings = self.embeddings(distance_matrix)
+        embeddings = embeddings.view(self.n, self.n, self.d)
+        return embeddings
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embedding_dim, num_heads, distance_matrix, dim_head=64):
+    def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
         super().__init__()
-        inner_dim = dim_head * num_heads
+        self.dim_head = hidden_dim//num_heads
         self.num_heads = num_heads
-        self.scale = dim_head ** -0.5
-        self.dim_head = dim_head
+        self.scale = self.dim_head ** -0.5
         self.norm = nn.LayerNorm(embedding_dim)
 
-        self.to_qkv = nn.Linear(embedding_dim, inner_dim * 3, bias=False)
-        self.to_out = nn.Linear(inner_dim, embedding_dim)
+        self.fc_q = nn.Linear(embedding_dim, self.hidden_dim)
+        self.fc_k = nn.Linear(embedding_dim, self.hidden_dim)
+        self.fc_v = nn.Linear(embedding_dim, self.hidden_dim)
 
-        self.relative_k = GeneralLearnableFunctionParallel(embedding_dim)
-        self.relative_v = GeneralLearnableFunctionParallel(embedding_dim)
+        self.to_out = nn.Linear(hidden_dim, embedding_dim)
+
+        self.relative_k = GeneralLearnableFunctionParallel(self.dim_head, distance_matrix)
+        self.relative_v = GeneralLearnableFunctionParallel(self.dim_head, distance_matrix)
+        #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(0.1)
     
-    def forward(self, query, key, value):
-        #query =  [batch_size, num_patches, embedding_dim]
-        #key =  [batch_size, num_patches, embedding_dim]
-        #value =  [batch_size, num_patches, embedding_dim]
-
-        batch_size = query.size(0)
-        qkv = self.to_qkv(query).chunk(3, dim=-1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.num_heads), qkv)
+    def forward(self,x):
+        #x = [batch_size, num_patches, embedding_dim]
         
-        #q = [batch_size, num_heads, num_patches, dim_head]
+        q = self.fc_q(x)
+        k = self.fc_k(x)
+        v = self.fc_v(x)
+        #q,k,v = [batch_size, num_patches, inner_dim]
 
-        #r_q1 = q.view(batch_size, q.shape[2], self.num_heads, self.dim_head).permute(0, 2, 1, 3)
-        #r_k1 = k.view(batch_size, k.shape[2], self.num_heads, self.dim_head).permute(0, 2, 1, 3)
+        q = q.view(x.shape[0], self.num_heads, x.shape[1], self.dim_head)
+        k = k.view(x.shape[0], self.num_heads, x.shape[1], self.dim_head)
+        #q,k = [batch_size, num_heads, num_patches, dim_head]
 
-        attn1 = torch.matmul(q, k.permute(0, 1, 3, 2))
+        QKT = torch.matmul(q, k.permute(0, 1, 3, 2))
+        #QKT = [batch_size, num_heads, num_patches, num_patches]
+
+        #apply softmax and scale
+        attn1 = self.softmax(QKT) * self.scale
         #attn1 = [batch_size, num_heads, num_patches, num_patches]
 
-        r_q2 = query.permute(1, 0, 2)
-        r_k2 = self.relative_k(query.shape[1], key.shape[1])
+        #obtain relative positional embeddings
+        relative_k = self.relative_k(x)
+        relative_v = self.relative_v(x)
+        #relative_k, relative_v = [num_patches, embedding_dim]
 
-        attn2 = torch.matmul(r_q2, r_k2.transpose(1, 2)).transpose(0, 1)
-        attn2 = attn2.contiguous().view(batch_size, self.n_heads, query.shape[1], key.shape[1])
-
-        attn = (attn1 + attn2) / self.scale
-        attn = self.softmax(attn)
-        attn = self.dropout(attn)
-
-        r_v1 = v.view(batch_size, -1, self.num_heads, self.dim_head).permute(0, 2, 1, 3)
-        r_v2 = self.relative_v(query.shape[1], value.shape[1])
-
-        weight1 = torch.matmul(attn, r_v1)
-
-        weight2 = attn.permute(2, 0, 1, 3).contiguous().view(query.shape[1], batch_size*self.n_heads, key.shape[1])
-        weight2 = torch.matmul(weight2, r_v2)
-        weight2 = weight2.transpose(0, 1).contiguous().view(batch_size, self.n_heads, query.shape[1], self.head_dim)
-
-        out = weight1 + weight2
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        out = out.view(batch_size, -1, self.num_heads*self.dim_head)
-        out = self.to_out(out)
-        return out
+        return None
 
 class MLP(nn.Module):
     def __init__(self, embedding_dim, mlp_dim):
