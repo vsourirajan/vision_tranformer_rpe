@@ -98,6 +98,20 @@ class GeneralLearnableFunctionParallel(nn.Module):
 
         return embeddings
 
+class MonotonicallyDecreasingFunction(nn.Module):
+    def __init__(self, embed_dim):
+        super(MonotonicallyDecreasingFunction, self).__init__()
+        self.embed_dim = embed_dim
+        self.embeddings = nn.Linear(1, embed_dim)
+
+    def forward(self, distance_matrix):
+        num_patches = distance_matrix.shape[0]
+        distance_matrix = distance_matrix.view(-1, 1)
+        embeddings = self.embeddings(distance_matrix)
+        embeddings = embeddings.view(num_patches, num_patches, -1)
+
+        return embeddings
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
         super().__init__()
@@ -126,6 +140,8 @@ class MultiHeadAttention(nn.Module):
     def forward(self,x):
         #x = [batch_size, num_patches, embedding_dim]
         
+        x = self.norm(x)
+
         batch_size = x.shape[0]
         num_patches = x.shape[1]
 
@@ -244,7 +260,7 @@ def main():
                               patch_size=4, 
                               num_classes=10, 
                               embedding_dim=128, 
-                              num_layers=4, 
+                              num_layers=6, 
                               num_heads=4,  
                               mlp_dim=512,
                               channels=1,
@@ -254,7 +270,7 @@ def main():
 
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
     num_epochs = 100
 

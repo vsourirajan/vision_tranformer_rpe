@@ -20,6 +20,6 @@ Each mechanism is tested on MNIST, CIFAR datasets
 
 ### Results:
 - Absolute Positional Encoding: 0.820 Test accuracy
-- General Learnable Function: 0.192 Test accuracy
+- General Learnable Function: 0.975, 0.973  Test accuracy
 - Monotonically Decreasing Function: 
 - Ratio of Two Polynomial Functions: 
