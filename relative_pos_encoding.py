@@ -8,10 +8,6 @@ from tqdm import tqdm
 import math
 import matplotlib.pyplot as plt
 
-from einops import rearrange
-from einops.layers.torch import Rearrange
-
-
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
@@ -31,6 +27,7 @@ test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
 
 
 device = "mps" if torch.has_mps else "cpu"
+#device = "cpu"
 
 #function to plot loss and accuracy
 def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
@@ -88,36 +85,40 @@ class PatchEmbedding(nn.Module):
 
 #general learnable function where weights are shared across all attention heads
 class GeneralLearnableFunctionParallel(nn.Module):
-    def __init__(self, n, d):
+    def __init__(self, embed_dim):
         super(GeneralLearnableFunctionParallel, self).__init__()
-        self.n = n
-        self.d = d
-        self.embeddings = nn.Linear(1, d)
+        self.embed_dim = embed_dim
+        self.embeddings = nn.Linear(1, embed_dim)
 
     def forward(self, distance_matrix):
-        distance_matrix = distance_matrix.unsqueeze(-1)
+        num_patches = distance_matrix.shape[0]
+        distance_matrix = distance_matrix.view(-1, 1)
         embeddings = self.embeddings(distance_matrix)
-        embeddings = embeddings.view(self.n, self.n, self.d)
-        return embeddings
+        embeddings = embeddings.view(num_patches, num_patches, -1)
 
+        return embeddings
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
         super().__init__()
         self.dim_head = hidden_dim//num_heads
         self.num_heads = num_heads
+        self.embed_dim = embedding_dim
+        self.hidden_dim = hidden_dim
         self.scale = self.dim_head ** -0.5
         self.norm = nn.LayerNorm(embedding_dim)
 
-        self.fc_q = nn.Linear(embedding_dim, self.hidden_dim)
-        self.fc_k = nn.Linear(embedding_dim, self.hidden_dim)
-        self.fc_v = nn.Linear(embedding_dim, self.hidden_dim)
+        self.fc_q = nn.Linear(embedding_dim, hidden_dim)
+        self.fc_k = nn.Linear(embedding_dim, hidden_dim)
+        self.fc_v = nn.Linear(embedding_dim, hidden_dim)
 
         self.to_out = nn.Linear(hidden_dim, embedding_dim)
 
-        self.relative_k = GeneralLearnableFunctionParallel(self.dim_head, distance_matrix)
-        self.relative_v = GeneralLearnableFunctionParallel(self.dim_head, distance_matrix)
+        self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
+        self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
+
+        self.distance_matrix = distance_matrix
 
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(0.1)
@@ -125,6 +126,9 @@ class MultiHeadAttention(nn.Module):
     def forward(self,x):
         #x = [batch_size, num_patches, embedding_dim]
         
+        batch_size = x.shape[0]
+        num_patches = x.shape[1]
+
         q = self.fc_q(x)
         k = self.fc_k(x)
         v = self.fc_v(x)
@@ -132,21 +136,44 @@ class MultiHeadAttention(nn.Module):
 
         q = q.view(x.shape[0], self.num_heads, x.shape[1], self.dim_head)
         k = k.view(x.shape[0], self.num_heads, x.shape[1], self.dim_head)
+        v = v.view(x.shape[0], self.num_heads, x.shape[1], self.dim_head)
         #q,k = [batch_size, num_heads, num_patches, dim_head]
 
         QKT = torch.matmul(q, k.permute(0, 1, 3, 2))
         #QKT = [batch_size, num_heads, num_patches, num_patches]
 
-        #apply softmax and scale
-        attn1 = self.softmax(QKT) * self.scale
-        #attn1 = [batch_size, num_heads, num_patches, num_patches]
-
         #obtain relative positional embeddings
-        relative_k = self.relative_k(x)
-        relative_v = self.relative_v(x)
-        #relative_k, relative_v = [num_patches, embedding_dim]
+        relative_k = self.relative_k(self.distance_matrix)
+        relative_v = self.relative_v(self.distance_matrix)
+        #relative_k, relative_v = [num_patches, num_patches, dim_head]
 
-        return None
+        q_reshaped = q.view(num_patches, batch_size*self.num_heads, self.dim_head)
+        #modified_q = [num_patches, batch_size*num_heads, dim_head]
+
+        QAT = torch.matmul(q_reshaped, relative_k.permute(0, 2, 1))
+        #QAT = [num_patches, batch_size*num_heads, num_patches]
+
+        QAT = QAT.view(batch_size, self.num_heads, num_patches, num_patches)
+
+        attn = (QKT + QAT) * self.scale
+        attn = self.softmax(attn)
+        #attn = [batch_size, num_heads, num_patches, num_patches]
+
+        attn_V = torch.matmul(attn, v)
+        #attn_V = [batch_size, num_heads, num_patches, dim_head]
+
+        attn_reshaped = attn.view(num_patches, batch_size*self.num_heads, num_patches)
+        attn_relative_v = torch.matmul(attn_reshaped, relative_v)
+        #attn_relative_v = [num_patches, batch_size*num_heads, dim_head]
+
+        attn_relative_v = attn_relative_v.view(batch_size, self.num_heads, num_patches, self.dim_head)
+
+        out = attn_V + attn_relative_v
+        out = out.view(batch_size, num_patches, self.hidden_dim)
+        out = self.to_out(out)
+        out = self.dropout(out)
+        return out
+
 
 class MLP(nn.Module):
     def __init__(self, embedding_dim, mlp_dim):
@@ -166,7 +193,7 @@ class MLP(nn.Module):
 class EncoderBlock(nn.Module):
     def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix):
         super(EncoderBlock, self).__init__()
-        self.attention = MultiHeadAttention(embedding_dim, num_heads, distance_matrix)
+        self.attention = MultiHeadAttention(embedding_dim, num_heads, hidden_dim=embedding_dim, distance_matrix=distance_matrix)
         self.mlp = MLP(embedding_dim, mlp_dim)
 
         self.norm = nn.LayerNorm(embedding_dim)
@@ -179,7 +206,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x):
         for attn, mlp in self.encoder_block:
-            x = attn(x, x, x) + x
+            x = attn(x) + x
             x = mlp(x) + x
         x = self.norm(x)
         return x 
@@ -191,7 +218,7 @@ class VisionTransformer(nn.Module):
         self.embedding_size = embedding_dim
         self.patch_size = patch_size
 
-        self.distance_matrix = calculate_distance_matrix(self.num_patches)
+        self.distance_matrix = calculate_distance_matrix(self.num_patches).to(device)
 
         self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
         self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix)
