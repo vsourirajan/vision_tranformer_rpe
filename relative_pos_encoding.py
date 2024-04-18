@@ -13,17 +13,17 @@ transform = transforms.Compose([
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-train_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=True, download=True, transform=transform)
-test_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=False, download=True, transform=transform)
+# train_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=True, download=True, transform=transform)
+# test_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=False, download=True, transform=transform)
 
-train_loader_mnist = DataLoader(train_dataset_mnist, batch_size=64, shuffle=True)
-test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
+# train_loader_mnist = DataLoader(train_dataset_mnist, batch_size=64, shuffle=True)
+# test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
 
-# train_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
-# test_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
+train_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
+test_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
 
-# train_loader_cifar10 = DataLoader(train_dataset_cifar10, batch_size=64, shuffle=True)
-# test_loader_cifar10 = DataLoader(test_dataset_cifar10, batch_size=64, shuffle=False)
+train_loader_cifar10 = DataLoader(train_dataset_cifar10, batch_size=64, shuffle=True)
+test_loader_cifar10 = DataLoader(test_dataset_cifar10, batch_size=64, shuffle=False)
 
 
 device = "mps" if torch.has_mps else "cpu"
@@ -36,7 +36,7 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_losses, 'b', label='Training loss')
     plt.plot(epochs, val_losses, 'r', label='Validation loss')
-    plt.title('Training Loss of Positional Encoding Vision Tranformer on MNIST Dataset')
+    plt.title('Training Loss of General Leanable RPE Vision Tranformer on CIFAR10 Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
@@ -46,7 +46,7 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
     plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
-    plt.title('Training Accuracy of Positional Encoding Vision Tranformer on MNIST Dataset')
+    plt.title('Training Accuracy of General Leanable RPE Vision Tranformer on CIFAR10 Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
@@ -98,9 +98,10 @@ class GeneralLearnableFunctionParallel(nn.Module):
 
         return embeddings
 
-class MonotonicallyDecreasingFunction(nn.Module):
+#monotonically decreasing function where weights are shared across all attention heads
+class MonotonicallyDecreasingFunctionParallel(nn.Module):
     def __init__(self, embed_dim):
-        super(MonotonicallyDecreasingFunction, self).__init__()
+        super(MonotonicallyDecreasingFunctionParallel, self).__init__()
         self.embed_dim = embed_dim
         self.embeddings = nn.Linear(1, embed_dim)
 
@@ -256,14 +257,14 @@ class VisionTransformer(nn.Module):
 def main():
 
 
-    model = VisionTransformer(image_size=28, 
+    model = VisionTransformer(image_size=32, 
                               patch_size=4, 
                               num_classes=10, 
                               embedding_dim=128, 
                               num_layers=6, 
                               num_heads=4,  
                               mlp_dim=512,
-                              channels=1,
+                              channels=3,
                               dropout=0.2).to(device)
     print(model)
 
@@ -285,7 +286,7 @@ def main():
         running_loss = 0.0
         correct = 0
         total = 0
-        for images, labels in tqdm(train_loader_mnist):
+        for images, labels in tqdm(train_loader_cifar10):
 
             images, labels = images.to(device), labels.to(device)
             # print("Image shape: ", images.shape)
@@ -301,7 +302,7 @@ def main():
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
         
-        train_loss = running_loss / len(train_loader_mnist)
+        train_loss = running_loss / len(train_loader_cifar10)
         train_acc = correct / total
 
         model.eval()
@@ -309,7 +310,7 @@ def main():
         total = 0
         with torch.no_grad():
             running_loss = 0.0
-            for images, labels in tqdm(test_loader_mnist):
+            for images, labels in tqdm(test_loader_cifar10):
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = loss_function(outputs, labels)
@@ -318,7 +319,7 @@ def main():
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
         
-        val_loss = running_loss / len(test_loader_mnist)
+        val_loss = running_loss / len(test_loader_cifar10)
         val_acc = correct / total
         
         print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
@@ -334,7 +335,7 @@ def main():
 
     #testing loop
     with torch.no_grad():
-        for images, labels in tqdm(test_loader_mnist):
+        for images, labels in tqdm(test_loader_cifar10):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = outputs.max(1)
