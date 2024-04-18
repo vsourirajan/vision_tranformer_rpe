@@ -36,7 +36,7 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_losses, 'b', label='Training loss')
     plt.plot(epochs, val_losses, 'r', label='Validation loss')
-    plt.title('Training Loss of General Leanable RPE Vision Tranformer on CIFAR10 Dataset')
+    plt.title   ('Training Loss of Monotonically Decreasing RPE Vision Tranformer on MNIST Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
@@ -46,7 +46,7 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
     plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
-    plt.title('Training Accuracy of General Leanable RPE Vision Tranformer on CIFAR10 Dataset')
+    plt.title('Training Accuracy of Monotonically Decreasing RPE Vision Tranformer on MNIST Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
@@ -103,14 +103,13 @@ class MonotonicallyDecreasingFunctionParallel(nn.Module):
     def __init__(self, embed_dim):
         super(MonotonicallyDecreasingFunctionParallel, self).__init__()
         self.embed_dim = embed_dim
-        self.embeddings = nn.Linear(1, embed_dim)
+        self.a = nn.Parameter(torch.randn(embed_dim))
 
     def forward(self, distance_matrix):
         num_patches = distance_matrix.shape[0]
         distance_matrix = distance_matrix.view(-1, 1)
-        embeddings = self.embeddings(distance_matrix)
-        embeddings = embeddings.view(num_patches, num_patches, -1)
-
+        embeddings = torch.exp(-torch.matmul(distance_matrix.unsqueeze(-1), self.a.unsqueeze(0)))
+        embeddings = embeddings.view(num_patches, num_patches, self.embed_dim)
         return embeddings
 
 class MultiHeadAttention(nn.Module):
@@ -129,8 +128,10 @@ class MultiHeadAttention(nn.Module):
 
         self.to_out = nn.Linear(hidden_dim, embedding_dim)
 
-        self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
-        self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
+        # self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
+        # self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
+        self.relative_k = MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        self.relative_v = MonotonicallyDecreasingFunctionParallel(self.dim_head)
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix
