@@ -1,7 +1,7 @@
 # Examining Various Relative Positional Encoding (RPE) Mechanisms for Vision Transformers (ViTs)
 
 ### RPE Mechanisms Explored
-- General Learnable Function: $f_\Theta : \mathbb{R} \rightarrow \mathbb{R}$
+- General Learnable Function: $f_\Theta : \mathbb{R} \rightarrow \mathbb{R}^d$
 - Monotonically Decreasing Function: $f = e^{-\alpha x}$
 - Ratio of two polynomial functions: $f = \frac{h}{g}$
 
@@ -16,14 +16,14 @@ Each mechanism is tested on MNIST, CIFAR datasets
 
 ### How to Run:
 - You can run the absolute positional encoding model with the following command: `python3 absolute_pos_encoding_vit.py`
-    - If "mps" is available the model with train on the MacOS GPU. Otherwise it will train on the cpu
+    - If the Metal Performance Shaders backend is available, the model with train on the MacOS GPU. Otherwise it will train on the cpu
 
 ### Results:
 - Subvariant 1: Same paramters across all heads:
     - MNIST:
         - Absolute Positional Encoding: 0.820 Test accuracy
         - General Learnable Function: 0.975, 0.973  Test accuracy
-        - Monotonically Decreasing Function: 0.312 Test accuracy
+        - Monotonically Decreasing Function: 0.313 Test accuracy
         - Ratio of Two Polynomial Functions: 
     - CIFAR10:
         - Absolute Positional Encoding: 0.546 Test accuracy
