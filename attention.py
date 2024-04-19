@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from rpe_mechanisms import GeneralLearnableFunctionParallel, MonotonicallyDecreasingFunctionParallel
+import rpe_mechanisms
 
 class MultiHeadAttentionParallel(nn.Module):
     def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
@@ -20,8 +20,8 @@ class MultiHeadAttentionParallel(nn.Module):
 
         # self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
         # self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
-        self.relative_k = MonotonicallyDecreasingFunctionParallel(self.dim_head)
-        self.relative_v = MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix
@@ -99,10 +99,8 @@ class MultiHeadAttentionIndividual(nn.Module):
 
         self.to_out = nn.Linear(hidden_dim, embedding_dim)
 
-        # self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
-        # self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
-        self.relative_k = MonotonicallyDecreasingFunctionParallel(self.dim_head)
-        self.relative_v = MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        self.relative_k = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
+        self.relative_v = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix
@@ -131,16 +129,16 @@ class MultiHeadAttentionIndividual(nn.Module):
         QKT = torch.matmul(q, k.permute(0, 1, 3, 2))
         #QKT = [batch_size, num_heads, num_patches, num_patches]
 
-        #obtain relative positional embeddings
+        #obtain relative positional embeddings that have an extra dimension for the number of heads
         relative_k = self.relative_k(self.distance_matrix)
         relative_v = self.relative_v(self.distance_matrix)
         #relative_k, relative_v = [num_heads, num_patches, num_patches, dim_head]
 
-        q_reshaped = q.view(num_patches, self.num_heads, batch_size, self.dim_head)
-        #modified_q = [num_patches, num_heads, batch_size, dim_head]
+        q_reshaped = q.view(self.num_heads, num_patches, batch_size, self.dim_head)
+        #modified_q = [num_heads, num_patches, batch_size, dim_head]
 
-        QAT = torch.matmul(q_reshaped, relative_k.permute(1,0,3,2))
-        #QAT = [num_patches, num_heads, batch_size, num_patches]
+        QAT = torch.matmul(q_reshaped, relative_k.permute(0,1,3,2))
+        #QAT = [num_heads, num_patches, batch_size, num_patches]
 
         QAT = QAT.view(batch_size, self.num_heads, num_patches, num_patches)
 
@@ -151,9 +149,9 @@ class MultiHeadAttentionIndividual(nn.Module):
         attn_V = torch.matmul(attn, v)
         #attn_V = [batch_size, num_heads, num_patches, dim_head]
 
-        attn_reshaped = attn.view(num_patches, batch_size*self.num_heads, num_patches)
+        attn_reshaped = attn.view(self.num_heads, num_patches, batch_size, num_patches)
         attn_relative_v = torch.matmul(attn_reshaped, relative_v)
-        #attn_relative_v = [num_patches, batch_size*num_heads, dim_head]
+        #attn_relative_v = [num_heads, num_patches, batch_size, dim_head]
 
         attn_relative_v = attn_relative_v.view(batch_size, self.num_heads, num_patches, self.dim_head)
 

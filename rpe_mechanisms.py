@@ -15,6 +15,23 @@ class GeneralLearnableFunctionParallel(nn.Module):
         embeddings = embeddings.view(num_patches, num_patches, -1)
 
         return embeddings
+    
+
+#general learnable function where weights are shared across all attention heads
+class GeneralLearnableFunctionIndividual(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super(GeneralLearnableFunctionIndividual, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.embeddings = nn.Linear(1, embed_dim*num_heads)
+
+    def forward(self, distance_matrix):
+        num_patches = distance_matrix.shape[0]
+        distance_matrix = distance_matrix.view(-1, 1)
+        embeddings = self.embeddings(distance_matrix)
+        embeddings = embeddings.view(self.num_heads, num_patches, num_patches, -1)
+        return embeddings
+    
 
 #monotonically decreasing function where weights are shared across all attention heads
 class MonotonicallyDecreasingFunctionParallel(nn.Module):
