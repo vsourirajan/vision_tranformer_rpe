@@ -15,8 +15,9 @@ We also provide a comparison to the RPE-free baseline, which can be seen in `abs
 Each mechanism is tested on MNIST, CIFAR datasets
 
 ### How to Run:
+Note: If the Metal Performance Shaders backend is available, the model with train on the MacOS GPU. Otherwise it will train on the cpu
 - You can run the absolute positional encoding model with the following command: `python3 absolute_pos_encoding_vit.py`
-    - If the Metal Performance Shaders backend is available, the model with train on the MacOS GPU. Otherwise it will train on the cpu
+- You can run the absolute positional encoding model with the folliwing command: `python3 relative_pos_encoding_vit.py`
 
 ### Results:
 - Abolute Positional Encoding:

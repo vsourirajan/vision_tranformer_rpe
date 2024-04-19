@@ -101,9 +101,12 @@ class MLP(nn.Module):
         return x
 
 class EncoderBlock(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix):
+    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix, rpe_type, parallel_parameters=False):
         super(EncoderBlock, self).__init__()
-        self.attention = MultiHeadAttentionIndividual(embedding_dim, num_heads, hidden_dim=embedding_dim, distance_matrix=distance_matrix)
+        if parallel_parameters:
+            self.attention = MultiHeadAttentionParallel(embedding_dim, num_heads, embedding_dim, distance_matrix, rpe_type)
+        else:
+            self.attention = MultiHeadAttentionIndividual(embedding_dim, num_heads, embedding_dim, distance_matrix, rpe_type)
         self.mlp = MLP(embedding_dim, mlp_dim)
 
         self.norm = nn.LayerNorm(embedding_dim)
@@ -164,7 +167,7 @@ def main():
 
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
     num_epochs = 100
 

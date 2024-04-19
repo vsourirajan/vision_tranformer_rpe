@@ -3,7 +3,7 @@ import torch.nn as nn
 import rpe_mechanisms
 
 class MultiHeadAttentionParallel(nn.Module):
-    def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
+    def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix, rpe_type):
         super().__init__()
         self.dim_head = hidden_dim//num_heads
         self.num_heads = num_heads
@@ -84,7 +84,7 @@ class MultiHeadAttentionParallel(nn.Module):
 
 
 class MultiHeadAttentionIndividual(nn.Module):
-    def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix):
+    def __init__(self, embedding_dim, num_heads, hidden_dim, distance_matrix, rpe_type):
         super().__init__()
         self.dim_head = hidden_dim//num_heads
         self.num_heads = num_heads
