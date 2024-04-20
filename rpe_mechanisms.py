@@ -61,7 +61,36 @@ class MonotonicallyDecreasingFunctionIndividual(nn.Module):
         return embeddings
 
 class RatioPolynomialsParallel(nn.Module):
-    pass
+    def __init__(self, embed_dim, max_degree = 5):
+        super(RatioPolynomialsParallel, self).__init__()
+        self.embed_dim = embed_dim
+        self.max_degree = max_degree
+
+        self.degree_f = nn.Parameter(torch.tensor(1.0))
+        self.degree_g = nn.Parameter(torch.tensor(1.0))
+        
+        self.coeffs_f = nn.Parameter(torch.randn(self.max_degree + 1, embed_dim))
+        
+        self.coeffs_g = nn.Parameter(torch.randn(self.max_degree + 1, embed_dim))
+    
+    def forward(self, distance_matrix):
+        num_patches = distance_matrix.shape[0]
+        distance_matrix = distance_matrix.view(-1, 1)
+        distance_matrix = distance_matrix.unsqueeze(-1)
+
+        f_x = torch.zeros(num_patches * num_patches, self.embed_dim, dtype=x.dtype, device=x.device)
+        for i in range(int(self.degree_f) + 1):
+            f_x += self.coeffs_f[i].unsqueeze(0) * distance_matrix ** i
+        
+        # Compute the denominator polynomial g(x)
+        g_x = torch.zeros(num_patches * num_patches, self.embed_dim, dtype=x.dtype, device=x.device)
+        for i in range(int(self.degree_g) + 1):
+            g_x += self.coeffs_g[i].unsqueeze(0) * distance_matrix ** i
+        
+        ratio = f_x / (g_x + 1e-8)
+
+        embeddings = ratio.view(num_patches, num_patches, self.embed_dim)
+        return embeddings
 
 class RatioPolynomialsIndividual(nn.Module):
     pass
