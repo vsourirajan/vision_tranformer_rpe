@@ -38,6 +38,6 @@ Note: If the Metal Performance Shaders backend is available, the model with trai
         - Monotonically Decreasing Function: 0.199 Test Accuracy
         - Ratio of Two Polynomial Functions: 
     - CIFAR10:
-        - General Learnable Function: 
-        - Monotonically Decreasing Function:
+        - General Learnable Function: 0.547
+        - Monotonically Decreasing Function: 
         - Ratio of Two Polynomial Functions: 
