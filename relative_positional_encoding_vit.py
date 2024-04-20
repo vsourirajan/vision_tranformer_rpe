@@ -7,29 +7,12 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import math
 import matplotlib.pyplot as plt
-
+import sys
 from attention import MultiHeadAttentionParallel, MultiHeadAttentionIndividual
-
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
-
-train_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=True, download=True, transform=transform)
-test_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=False, download=True, transform=transform)
-
-train_loader_mnist = DataLoader(train_dataset_mnist, batch_size=64, shuffle=True)
-test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
-
-# train_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
-# test_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
-
-# train_loader_cifar10 = DataLoader(train_dataset_cifar10, batch_size=64, shuffle=True)
-# test_loader_cifar10 = DataLoader(test_dataset_cifar10, batch_size=64, shuffle=False)
 
 
 device = "mps" if torch.has_mps else "cpu"
-#device = "cpu"
+
 
 #function to plot loss and accuracy
 def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
@@ -101,7 +84,7 @@ class MLP(nn.Module):
         return x
 
 class EncoderBlock(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix, rpe_type, parallel_parameters=False):
+    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix, rpe_type, parallel_parameters=True):
         super(EncoderBlock, self).__init__()
         if parallel_parameters:
             self.attention = MultiHeadAttentionParallel(embedding_dim, num_heads, embedding_dim, distance_matrix, rpe_type)
@@ -134,9 +117,9 @@ class VisionTransformer(nn.Module):
         self.distance_matrix = calculate_distance_matrix(self.num_patches).to(device)
 
         self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
-        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix)
+        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'general', False)
         self.to_latent = nn.Identity()
-        self.classification_head = nn.Linear(embedding_dim, num_classes)        
+        self.classification_head = nn.Linear(embedding_dim, num_classes)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -152,19 +135,44 @@ class VisionTransformer(nn.Module):
 
 def main():
 
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
 
-    model = VisionTransformer(image_size=28, 
-                              patch_size=4, 
-                              num_classes=10, 
-                              embedding_dim=128, 
-                              num_layers=6, 
-                              num_heads=4,  
-                              mlp_dim=512,
-                              channels=1,
-                              dropout=0.2).to(device)
+    dataset = sys.argv[1]
+    rpe_type = sys.argv[2]
+    parallel_parameters = sys.argv[3]
+
+    if dataset == "mnist":
+        train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
+        test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
+
+        model = VisionTransformer(image_size=28, 
+                                patch_size=4, 
+                                num_classes=10, 
+                                embedding_dim=128, 
+                                num_layers=6, 
+                                num_heads=4,  
+                                mlp_dim=512,
+                                channels=1,
+                                dropout=0.2).to(device)
+    else:
+        train_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, transform=transform, download=True)
+        test_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, transform=transform, download=True)
+        model = VisionTransformer(image_size=32, 
+                            patch_size=4, 
+                            num_classes=10, 
+                            embedding_dim=128, 
+                            num_layers=6, 
+                            num_heads=4,  
+                            mlp_dim=512,
+                            channels=3,
+                            dropout=0.2).to(device)
+    
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+
     print(model)
-
-
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
@@ -182,7 +190,7 @@ def main():
         running_loss = 0.0
         correct = 0
         total = 0
-        for images, labels in tqdm(train_loader_mnist):
+        for images, labels in tqdm(train_loader):
 
             images, labels = images.to(device), labels.to(device)
             # print("Image shape: ", images.shape)
@@ -198,7 +206,7 @@ def main():
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
         
-        train_loss = running_loss / len(train_loader_mnist)
+        train_loss = running_loss / len(train_loader)
         train_acc = correct / total
 
         model.eval()
@@ -206,7 +214,7 @@ def main():
         total = 0
         with torch.no_grad():
             running_loss = 0.0
-            for images, labels in tqdm(test_loader_mnist):
+            for images, labels in tqdm(test_loader):
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = loss_function(outputs, labels)
@@ -215,7 +223,7 @@ def main():
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
         
-        val_loss = running_loss / len(test_loader_mnist)
+        val_loss = running_loss / len(test_loader)
         val_acc = correct / total
         
         print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
@@ -231,7 +239,7 @@ def main():
 
     #testing loop
     with torch.no_grad():
-        for images, labels in tqdm(test_loader_mnist):
+        for images, labels in tqdm(test_loader):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = outputs.max(1)

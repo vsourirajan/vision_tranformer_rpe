@@ -99,8 +99,13 @@ class MultiHeadAttentionIndividual(nn.Module):
 
         self.to_out = nn.Linear(hidden_dim, embedding_dim)
 
-        self.relative_k = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
-        self.relative_v = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
+        if rpe_type == 'general':
+            self.relative_k = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
+            self.relative_v = rpe_mechanisms.GeneralLearnableFunctionIndividual(self.dim_head, self.num_heads)
+        else:
+            self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionIndividual(self.dim_head, self.num_heads)
+            self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionIndividual(self.dim_head, self.num_heads)
+            
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix

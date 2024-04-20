@@ -25,17 +25,17 @@ Note: If the Metal Performance Shaders backend is available, the model with trai
     - CIFAR10: 0.546 Test accuracy
 - Subvariant 1: Same paramters across all heads:
     - MNIST:
-        - General Learnable Function: 0.975 Test accuracy
-        - Monotonically Decreasing Function: 0.313 0.367 Test accuracy
+        - General Learnable Function: 0.975 Test Accuracy
+        - Monotonically Decreasing Function: 0.368 Test Accuracy
         - Ratio of Two Polynomial Functions: 
     - CIFAR10:
-        - General Learnable Function: 0.510, 0.516 Test accuracy
-        - Monotonically Decreasing Function: 0.210 Test accuracy
+        - General Learnable Function: 0.510, 0.516 Test Accuracy
+        - Monotonically Decreasing Function: 0.210 Test Accuracy
         - Ratio of Two Polynomial Functions: 
 - Subvariant 2: Different Parameters for Different Heads
     - MNIST:
-        - General Learnable Function: 0.973 Test accuracy
-        - Monotonically Decreasing Function:
+        - General Learnable Function: 0.973 Test Accuracy
+        - Monotonically Decreasing Function: 0.199 Test Accuracy
         - Ratio of Two Polynomial Functions: 
     - CIFAR10:
         - General Learnable Function: 

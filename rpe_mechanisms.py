@@ -16,8 +16,7 @@ class GeneralLearnableFunctionParallel(nn.Module):
 
         return embeddings
     
-
-#general learnable function where weights are shared across all attention heads
+#general learnable function where weights are individual for each attention head
 class GeneralLearnableFunctionIndividual(nn.Module):
     def __init__(self, embed_dim, num_heads):
         super(GeneralLearnableFunctionIndividual, self).__init__()
@@ -31,7 +30,6 @@ class GeneralLearnableFunctionIndividual(nn.Module):
         embeddings = self.embeddings(distance_matrix)
         embeddings = embeddings.view(self.num_heads, num_patches, num_patches, -1)
         return embeddings
-    
 
 #monotonically decreasing function where weights are shared across all attention heads
 class MonotonicallyDecreasingFunctionParallel(nn.Module):
@@ -46,3 +44,24 @@ class MonotonicallyDecreasingFunctionParallel(nn.Module):
         embeddings = torch.exp(-torch.matmul(distance_matrix.unsqueeze(-1), self.a.unsqueeze(0)))
         embeddings = embeddings.view(num_patches, num_patches, self.embed_dim)
         return embeddings
+    
+#monotonically decreasing function where weights are individual for each attention head
+class MonotonicallyDecreasingFunctionIndividual(nn.Module):
+    def __init__(self, embed_dim, num_heads):
+        super(MonotonicallyDecreasingFunctionIndividual, self).__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.a = nn.Parameter(torch.randn(embed_dim*num_heads))
+
+    def forward(self, distance_matrix):
+        num_patches = distance_matrix.shape[0]
+        distance_matrix = distance_matrix.view(-1, 1)
+        embeddings = torch.exp(-torch.matmul(distance_matrix.unsqueeze(-1), self.a.unsqueeze(0)))
+        embeddings = embeddings.view(self.num_heads, num_patches, num_patches, self.embed_dim)
+        return embeddings
+
+class RatioPolynomialsParallel(nn.Module):
+    pass
+
+class RatioPolynomialsIndividual(nn.Module):
+    pass
