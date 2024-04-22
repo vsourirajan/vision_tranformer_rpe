@@ -39,5 +39,5 @@ Note: If the Metal Performance Shaders backend is available, the model with trai
         - Ratio of Two Polynomial Functions: 
     - CIFAR10:
         - General Learnable Function: 0.547
-        - Monotonically Decreasing Function: 
+        - Monotonically Decreasing Function: 0.438
         - Ratio of Two Polynomial Functions: 
