@@ -20,8 +20,12 @@ class MultiHeadAttentionParallel(nn.Module):
 
         # self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
         # self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
-        self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
-        self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        # self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        # self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        # self.relative_k = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
+        # self.relative_v = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
+        self.relative_k = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
+        self.relative_v = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix
@@ -105,7 +109,7 @@ class MultiHeadAttentionIndividual(nn.Module):
         else:
             self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionIndividual(self.dim_head, self.num_heads)
             self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionIndividual(self.dim_head, self.num_heads)
-            
+
         #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
 
         self.distance_matrix = distance_matrix

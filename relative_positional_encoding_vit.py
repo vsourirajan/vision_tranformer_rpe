@@ -9,34 +9,10 @@ import math
 import matplotlib.pyplot as plt
 import sys
 from attention import MultiHeadAttentionParallel, MultiHeadAttentionIndividual
-
+from graph import plot_loss_accuracy
 
 device = "mps" if torch.has_mps else "cpu"
 
-
-#function to plot loss and accuracy
-def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
-    epochs = range(1, len(train_losses) + 1)
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(epochs, train_losses, 'b', label='Training loss')
-    plt.plot(epochs, val_losses, 'r', label='Validation loss')
-    plt.title   ('Training Loss of Monotonically Decreasing RPE Vision Tranformer on MNIST Dataset')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
-    plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
-    plt.title('Training Accuracy of Monotonically Decreasing RPE Vision Tranformer on MNIST Dataset')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 
 #function to calculate pairwise euclidean distance between centers of all patches
 def calculate_distance_matrix(num_patches):
@@ -117,7 +93,7 @@ class VisionTransformer(nn.Module):
         self.distance_matrix = calculate_distance_matrix(self.num_patches).to(device)
 
         self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
-        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'general', False)
+        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'monotonic', True)
         self.to_latent = nn.Identity()
         self.classification_head = nn.Linear(embedding_dim, num_classes)
         self.dropout = nn.Dropout(dropout)
@@ -140,10 +116,8 @@ def main():
     ])
 
     dataset = sys.argv[1]
-    rpe_type = sys.argv[2]
-    parallel_parameters = sys.argv[3]
 
-    if dataset == "mnist":
+    '''if dataset == "mnist":
         train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
         test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
 
@@ -167,10 +141,26 @@ def main():
                             num_heads=4,  
                             mlp_dim=512,
                             channels=3,
-                            dropout=0.2).to(device)
+                            dropout=0.2).to(device)'''
+    
+    # train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
+    # test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
+    
+    train_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, transform=transform, download=True)
+    test_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, transform=transform, download=True)
     
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+
+    model = VisionTransformer(image_size=32, 
+                            patch_size=4, 
+                            num_classes=10, 
+                            embedding_dim=128, 
+                            num_layers=6, 
+                            num_heads=4,  
+                            mlp_dim=512,
+                            channels=3,
+                            dropout=0.2).to(device)
 
     print(model)
 
@@ -249,7 +239,7 @@ def main():
     test_acc = correct / total
     print(f"Test Accuracy: {test_acc:.4f}")
 
-    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies)
+    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset)
     
 
 
