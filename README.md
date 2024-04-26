@@ -36,8 +36,8 @@ Note: If the Metal Performance Shaders backend is available, the model with trai
     - MNIST:
         - General Learnable Function: 0.973 Test Accuracy
         - Monotonically Decreasing Function: 0.199 Test Accuracy
-        - Ratio of Two Polynomial Functions: 
+        - Ratio of Two Polynomial Functions: 0.655 Test Accuracy
     - CIFAR10:
-        - General Learnable Function: 0.547
-        - Monotonically Decreasing Function: 0.438
-        - Ratio of Two Polynomial Functions: 
+        - General Learnable Function: 0.547 Test Accuracy
+        - Monotonically Decreasing Function: 0.438 Test Accuracy
+        - Ratio of Two Polynomial Functions: 0.247 Test Accuracy
