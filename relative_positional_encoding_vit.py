@@ -13,7 +13,6 @@ from graph import plot_loss_accuracy
 
 device = "mps" if torch.has_mps else "cpu"
 
-
 #function to calculate pairwise euclidean distance between centers of all patches
 def calculate_distance_matrix(num_patches):
     distance_matrix = torch.zeros(num_patches, num_patches)
@@ -93,7 +92,7 @@ class VisionTransformer(nn.Module):
         self.distance_matrix = calculate_distance_matrix(self.num_patches).to(device)
 
         self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
-        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'monotonic', True)
+        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'ratio', False)
         self.to_latent = nn.Identity()
         self.classification_head = nn.Linear(embedding_dim, num_classes)
         self.dropout = nn.Dropout(dropout)
@@ -241,7 +240,6 @@ def main():
 
     plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset)
     
-
 
 if __name__ == "__main__":
     main()
