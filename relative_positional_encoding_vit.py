@@ -59,9 +59,9 @@ class MLP(nn.Module):
         return x
 
 class EncoderBlock(nn.Module):
-    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix, rpe_type, parallel_parameters=True):
+    def __init__(self, embedding_dim, num_heads, num_layers, mlp_dim, distance_matrix, rpe_type, subvariant):
         super(EncoderBlock, self).__init__()
-        if parallel_parameters:
+        if subvariant == "1":
             self.attention = MultiHeadAttentionParallel(embedding_dim, num_heads, embedding_dim, distance_matrix, rpe_type)
         else:
             self.attention = MultiHeadAttentionIndividual(embedding_dim, num_heads, embedding_dim, distance_matrix, rpe_type)
@@ -83,7 +83,7 @@ class EncoderBlock(nn.Module):
         return x 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, image_size, patch_size, num_classes, embedding_dim, num_layers, num_heads, mlp_dim, channels, dropout):
+    def __init__(self, image_size, patch_size, num_classes, embedding_dim, num_layers, num_heads, mlp_dim, channels, dropout, rpe_method, subvariant):
         super().__init__()
         self.num_patches = (image_size // patch_size) ** 2
         self.embedding_size = embedding_dim
@@ -92,7 +92,7 @@ class VisionTransformer(nn.Module):
         self.distance_matrix = calculate_distance_matrix(self.num_patches).to(device)
 
         self.patch_embedding = PatchEmbedding(image_size, patch_size, channels, embedding_dim)
-        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, 'ratio', False)
+        self.encoder_block = EncoderBlock(embedding_dim, num_heads, num_layers, mlp_dim, self.distance_matrix, rpe_method, subvariant)
         self.to_latent = nn.Identity()
         self.classification_head = nn.Linear(embedding_dim, num_classes)
         self.dropout = nn.Dropout(dropout)
@@ -115,8 +115,10 @@ def main():
     ])
 
     dataset = sys.argv[1]
+    rpe_method = sys.argv[2]
+    subvariant = sys.argv[3]
 
-    '''if dataset == "mnist":
+    if dataset == "MNIST":
         train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
         test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
 
@@ -128,7 +130,9 @@ def main():
                                 num_heads=4,  
                                 mlp_dim=512,
                                 channels=1,
-                                dropout=0.2).to(device)
+                                dropout=0.2,
+                                rpe_method=rpe_method,
+                                subvariant=subvariant).to(device)
     else:
         train_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, transform=transform, download=True)
         test_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, transform=transform, download=True)
@@ -140,8 +144,10 @@ def main():
                             num_heads=4,  
                             mlp_dim=512,
                             channels=3,
-                            dropout=0.2).to(device)'''
-    
+                            dropout=0.2,
+                            rpe_method=rpe_method,
+                            subvariant=subvariant).to(device)
+    '''
     # train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
     # test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
     
@@ -160,13 +166,17 @@ def main():
                             mlp_dim=512,
                             channels=3,
                             dropout=0.2).to(device)
+    '''
 
     print(model)
+
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
-    num_epochs = 100
+    num_epochs = 1
 
     #training and validation loop
     train_losses = []
@@ -238,7 +248,7 @@ def main():
     test_acc = correct / total
     print(f"Test Accuracy: {test_acc:.4f}")
 
-    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset)
+    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset, rpe_method, subvariant)
     
 
 if __name__ == "__main__":

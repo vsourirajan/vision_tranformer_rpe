@@ -18,15 +18,15 @@ class MultiHeadAttentionParallel(nn.Module):
 
         self.to_out = nn.Linear(hidden_dim, embedding_dim)
 
-        # self.relative_k = GeneralLearnableFunctionParallel(self.dim_head)
-        # self.relative_v = GeneralLearnableFunctionParallel(self.dim_head)
-        # self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
-        # self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
-        # self.relative_k = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
-        # self.relative_v = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
-        self.relative_k = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
-        self.relative_v = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
-        #self.relative_k, self.relative_v = [num_patches, num_patches, dim_head]
+        if rpe_type == 'general':
+            self.relative_k = rpe_mechanisms.GeneralLearnableFunctionParallel(self.dim_head)
+            self.relative_v = rpe_mechanisms.GeneralLearnableFunctionParallel(self.dim_head)
+        elif rpe_type == 'monotonic':
+            self.relative_k = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+            self.relative_v = rpe_mechanisms.MonotonicallyDecreasingFunctionParallel(self.dim_head)
+        else:
+            self.relative_k = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
+            self.relative_v = rpe_mechanisms.RatioPolynomialsParallel(self.dim_head)
 
         self.distance_matrix = distance_matrix
 
