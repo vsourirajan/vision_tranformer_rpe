@@ -7,37 +7,21 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import math
 import matplotlib.pyplot as plt
-
+import sys
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
 
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
-
-train_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=True, download=True, transform=transform)
-test_dataset_mnist = torchvision.datasets.MNIST(root='./data_mnist', train=False, download=True, transform=transform)
-
-train_loader_mnist = DataLoader(train_dataset_mnist, batch_size=64, shuffle=True)
-test_loader_mnist = DataLoader(test_dataset_mnist, batch_size=64, shuffle=False)
-
-# train_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
-# test_dataset_cifar10 = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
-
-# train_loader_cifar10 = DataLoader(train_dataset_cifar10, batch_size=64, shuffle=True)
-# test_loader_cifar10 = DataLoader(test_dataset_cifar10, batch_size=64, shuffle=False)
 
 device = "mps" if torch.has_mps else "cpu"
 
-def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies):
+def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset):
     epochs = range(1, len(train_losses) + 1)
 
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_losses, 'b', label='Training loss')
     plt.plot(epochs, val_losses, 'r', label='Validation loss')
-    plt.title('Training and Validation Loss of Regular Vision Tranformer on MNIST Dataset')
+    plt.title(f'Training and Validation Loss of RPE-Free Baseline on {dataset} Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
@@ -47,7 +31,7 @@ def plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracie
     plt.figure(figsize=(10, 5))
     plt.plot(epochs, train_accuracies, 'b', label='Training accuracy')
     plt.plot(epochs, val_accuracies, 'r', label='Validation accuracy')
-    plt.title('Training and Validation Accuracy of Regular Vision Tranformer on MNIST Dataset')
+    plt.title(f'Training and Validation Accuracy of RPE-Free Baseline on {dataset} Dataset')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
@@ -184,21 +168,47 @@ class VisionTransformer(nn.Module):
 
 def main():
 
-    model = VisionTransformer(image_size=28, 
-                              patch_size=4, 
-                              num_classes=10, 
-                              embedding_dim=128, 
-                              num_layers=4, 
-                              num_heads=4, 
-                              mlp_dim=512,
-                              channels=1,
-                              dropout=0.2).to(device)
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
+
+    dataset = sys.argv[1]
+
+    if dataset == "MNIST":
+        train_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=True, transform=transform, download=True)
+        test_dataset = torchvision.datasets.MNIST(root='./data_mnist', train=False, transform=transform, download=True)
+
+        model = VisionTransformer(image_size=28, 
+                                patch_size=4, 
+                                num_classes=10, 
+                                embedding_dim=128, 
+                                num_layers=6, 
+                                num_heads=4,  
+                                mlp_dim=512,
+                                channels=1,
+                                dropout=0.2).to(device)
+    else:
+        train_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, transform=transform, download=True)
+        test_dataset = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, transform=transform, download=True)
+        model = VisionTransformer(image_size=32, 
+                            patch_size=4, 
+                            num_classes=10, 
+                            embedding_dim=128, 
+                            num_layers=6, 
+                            num_heads=4,  
+                            mlp_dim=512,
+                            channels=3,
+                            dropout=0.2).to(device)
+        
     print(model)
+
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.0001)
 
-    num_epochs = 100
+    num_epochs = 1
 
     #training and validation loop
     train_losses = []
@@ -211,7 +221,7 @@ def main():
         running_loss = 0.0
         correct = 0
         total = 0
-        for images, labels in tqdm(train_loader_mnist):
+        for images, labels in tqdm(train_loader):
 
             images, labels = images.to(device), labels.to(device)
             # print("Image shape: ", images.shape)
@@ -227,7 +237,7 @@ def main():
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
         
-        train_loss = running_loss / len(train_loader_mnist)
+        train_loss = running_loss / len(train_loader)
         train_acc = correct / total
 
         model.eval()
@@ -235,7 +245,7 @@ def main():
         total = 0
         with torch.no_grad():
             running_loss = 0.0
-            for images, labels in tqdm(test_loader_mnist):
+            for images, labels in tqdm(test_loader):
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = loss_function(outputs, labels)
@@ -244,7 +254,7 @@ def main():
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
         
-        val_loss = running_loss / len(test_loader_mnist)
+        val_loss = running_loss / len(test_loader)
         val_acc = correct / total
         
         print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
@@ -260,7 +270,7 @@ def main():
 
     #testing loop
     with torch.no_grad():
-        for images, labels in tqdm(test_loader_mnist):
+        for images, labels in tqdm(test_loader):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = outputs.max(1)
@@ -270,7 +280,7 @@ def main():
     test_acc = correct / total
     print(f"Test Accuracy: {test_acc:.4f}")
 
-    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies)
+    plot_loss_accuracy(train_losses, train_accuracies, val_losses, val_accuracies, dataset)
     
 
 
