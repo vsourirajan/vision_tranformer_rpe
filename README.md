@@ -16,9 +16,19 @@ Each mechanism is tested on MNIST, CIFAR datasets
 
 ### How to Run:
 Note: If the Metal Performance Shaders backend is available, the model with train on the MacOS GPU. Otherwise it will train on the cpu
-- You can run the absolute positional encoding model with the following command: `python3 absolute_pos_encoding_vit.py`
-- You can run the absolute positional encoding model with the folliwing command: `python3 relative_pos_encoding_vit.py`
-
+- You can run the absolute positional encoding model with the following command: `python3 absolute_pos_encoding_vit.py {dataset name}`
+    - The dataset name can be one of the following:
+        - "MNIST"
+        - "CIFAR10"
+        - eg. `python3 absolute_pos_encoding_vit.py MNIST` will train the RPE-free baseline on the MNIST dataset
+- You can run the relative positional encoding model with the folliwing command: `python3 relative_pos_encoding_vit.py {dataset name} {rpe type} {subvariant}`
+    - The dataset name follows the same requirements as above for the RPE-free baseline
+    - The rpe type can be one of the following:
+        - "general": General Learnable RPE Function
+        - "monotonic": Monotonically Decreasing RPE Function
+        - "ratio": Ratio of Polynomials RPE Function
+    - The subvariant can be either "1" (same set of RPE parameters across all attention heads) or "2" (different parameters for different attention heads)
+    - eg. `python3 relative_pos_encoding_vit MNIST general 1` will run General Learnable RPE Subvariant 1 on MNIST
 ### Results:
 - Abolute Positional Encoding:
     - MNIST: 0.820 Test accuracy
